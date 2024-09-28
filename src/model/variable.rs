@@ -36,11 +36,12 @@ where
     /// # Errors
     ///
     /// Returns an error if the input string does not match the expected format.
+    #[allow(dead_code)]
     pub fn parse(input: &str) -> nom::IResult<&str, Self, nom::error::VerboseError<&str>> {
         use nom::{
             bytes::complete::take_while,
             character::complete::char,
-            sequence::{delimited, preceded, tuple},
+            sequence::{preceded, tuple},
         };
 
         /// Checks if a character is alphanumeric or an underscore.
@@ -57,9 +58,8 @@ where
         }
 
         let parse_name = preceded(char('$'), take_while(is_alphanumeric));
-        let parse_data_type = delimited(char('['), take_while(is_alphanumeric), char(']'));
 
-        let (input, (data_type, name)) = tuple((parse_data_type, parse_name))(input)?;
+        let (input, (data_type, name)) = tuple((DataType::parse, parse_name))(input)?;
 
         if name.is_empty() {
             return Err(nom::Err::Error(nom::error::VerboseError::from_error_kind(
@@ -72,8 +72,8 @@ where
             input,
             Self {
                 name: name.to_string(),
-                data_type: DataType::parse(&format!("[{}]", data_type)),
                 value: Default::default(),
+                data_type,
             },
         ))
     }
