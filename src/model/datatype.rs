@@ -33,72 +33,59 @@ impl DataType {
     /// # Returns
     ///
     /// * `DataType` - The parsed data type.
-    pub fn parse(input: &str) -> Self {
+    #[allow(dead_code)]
+    pub fn parse(input: &str) -> nom::IResult<&str, Self, nom::error::VerboseError<&str>> {
+        use nom::{
+            branch::alt,
+            bytes::complete::tag,
+            character::complete::char,
+            combinator::map,
+            sequence::{preceded, terminated},
+            IResult,
+        };
+
+        fn parse_data_type(input: &str) -> IResult<&str, DataType, nom::error::VerboseError<&str>> {
+            use nom::bytes::complete::tag_no_case;
+
+            alt((
+                map(tag_no_case("STRING"), |_| DataType::String),
+                map(tag_no_case("BOOL"), |_| DataType::Bool),
+                map(tag_no_case("SWITCH"), |_| DataType::Switch),
+                map(tag_no_case("UI32"), |_| DataType::Ui32),
+                map(tag_no_case("UI64"), |_| DataType::Ui64),
+                map(alt((tag_no_case("I32"), tag_no_case("INT"))), |_| {
+                    DataType::I32
+                }),
+                map(tag_no_case("I64"), |_| DataType::I64),
+                map(tag_no_case("F32"), |_| DataType::F32),
+                map(tag_no_case("F64"), |_| DataType::F64),
+                map(tag_no_case("PSCREDENTIAL"), |_| DataType::Credential),
+                map(tag_no_case("SECURESTRING"), |_| DataType::SecureString),
+            ))(input)
+        }
+        fn parse_array(input: &str) -> IResult<&str, DataType, nom::error::VerboseError<&str>> {
+            map(terminated(parse_data_type, tag("[]")), |dt| {
+                DataType::Array(Array(Box::new(dt)))
+            })(input)
+        }
+
         if input.is_empty() {
-            return Self::Undefined;
+            return Ok(("", Self::Undefined));
         }
 
-        if !input.starts_with('[') {
-            return Self::Unknown;
-        }
+        let (input, data_type) = preceded(
+            char('['),
+            terminated(
+                alt((
+                    parse_array,
+                    parse_data_type,
+                    map(tag(""), |_| Self::Undefined),
+                )),
+                char(']'),
+            ),
+        )(input)?;
 
-        if !input.ends_with(']') {
-            return Self::Unknown;
-        }
-
-        let mut is_array = false;
-        let input: String = if input.ends_with("[]]") {
-            is_array = true;
-            let i = input
-                .chars()
-                .rev()
-                .skip(3)
-                .collect::<String>()
-                .chars()
-                .rev()
-                .collect::<String>();
-            i + "]"
-        } else {
-            input.to_owned()
-        };
-        let dt = match input.to_uppercase().as_str() {
-            "[STRING]" => Self::String,
-            "[BOOL]" => Self::Bool,
-            "[SWITCH]" => Self::Switch,
-            "[UI32]" => Self::Ui32,
-            "[UI64]" => Self::Ui64,
-            "[I32]" | "[INT]" => Self::I32,
-            "[I64]" => Self::I64,
-            "[F32]" => Self::F32,
-            "[F64]" => Self::F64,
-            "[PSCREDENTIAL]" => Self::Credential,
-            "[SECURESTRING]" => Self::SecureString,
-            "" => Self::Undefined,
-            _ => Self::Unknown,
-        };
-
-        if is_array {
-            Self::Array(Array(Box::new(dt)))
-        } else {
-            dt
-        }
-    }
-}
-
-impl std::str::FromStr for DataType {
-    type Err = ();
-
-    /// Converts a string slice to a `DataType`.
-    ///
-    /// # Arguments
-    ///
-    /// * `input` - A string slice that holds the data type representation.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<DataType, ()>` - The parsed data type or an error.
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        Ok(Self::parse(input))
+        Ok((input, data_type))
     }
 }
 
@@ -107,74 +94,90 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_from_str() {
-        assert_eq!("[string]".parse::<DataType>(), Ok(DataType::String));
-        assert_eq!("[bool]".parse::<DataType>(), Ok(DataType::Bool));
-        assert_eq!("[switch]".parse::<DataType>(), Ok(DataType::Switch));
-        assert_eq!("[ui32]".parse::<DataType>(), Ok(DataType::Ui32));
-        assert_eq!("[ui64]".parse::<DataType>(), Ok(DataType::Ui64));
-        assert_eq!("[i32]".parse::<DataType>(), Ok(DataType::I32));
-        assert_eq!("[i64]".parse::<DataType>(), Ok(DataType::I64));
-        assert_eq!("[f32]".parse::<DataType>(), Ok(DataType::F32));
-        assert_eq!("[f64]".parse::<DataType>(), Ok(DataType::F64));
+    fn test_parse_string() {
+        assert_eq!(DataType::parse("[string]").unwrap().1, DataType::String);
+    }
+
+    #[test]
+    fn test_parse_bool() {
+        assert_eq!(DataType::parse("[BOOL]").unwrap().1, DataType::Bool);
+    }
+
+    #[test]
+    fn test_parse_switch() {
+        assert_eq!(DataType::parse("[SWITCH]").unwrap().1, DataType::Switch);
+    }
+
+    #[test]
+    fn test_parse_ui32() {
+        assert_eq!(DataType::parse("[UI32]").unwrap().1, DataType::Ui32);
+    }
+
+    #[test]
+    fn test_parse_ui64() {
+        assert_eq!(DataType::parse("[UI64]").unwrap().1, DataType::Ui64);
+    }
+
+    #[test]
+    fn test_parse_i32() {
+        assert_eq!(DataType::parse("[I32]").unwrap().1, DataType::I32);
+    }
+
+    #[test]
+    fn test_parse_int() {
+        assert_eq!(DataType::parse("[INT]").unwrap().1, DataType::I32);
+    }
+
+    #[test]
+    fn test_parse_i64() {
+        assert_eq!(DataType::parse("[I64]").unwrap().1, DataType::I64);
+    }
+
+    #[test]
+    fn test_parse_f32() {
+        assert_eq!(DataType::parse("[F32]").unwrap().1, DataType::F32);
+    }
+
+    #[test]
+    fn test_parse_f64() {
+        assert_eq!(DataType::parse("[F64]").unwrap().1, DataType::F64);
+    }
+
+    #[test]
+    fn test_parse_credential() {
         assert_eq!(
-            "[pscredential]".parse::<DataType>(),
-            Ok(DataType::Credential)
+            DataType::parse("[PSCREDENTIAL]").unwrap().1,
+            DataType::Credential
         );
+    }
+
+    #[test]
+    fn test_parse_secure_string() {
         assert_eq!(
-            "[SECURESTRING]".parse::<DataType>(),
-            Ok(DataType::SecureString)
+            DataType::parse("[SECURESTRING]").unwrap().1,
+            DataType::SecureString
         );
-        assert_eq!("".parse::<DataType>(), Ok(DataType::Undefined));
-        assert_eq!("UNKNOWN".parse::<DataType>(), Ok(DataType::Unknown));
-        assert_eq!("SOMETHING_ELSE".parse::<DataType>(), Ok(DataType::Unknown));
+    }
+
+    #[test]
+    fn test_parse_array() {
         assert_eq!(
-            "[STRING[]]".parse::<DataType>(),
-            Ok(DataType::Array(Array(Box::new(DataType::String))))
+            DataType::parse("[string[]]").unwrap().1,
+            DataType::Array(Array(Box::new(DataType::String)))
         );
-        assert_eq!(
-            "[BOOL[]]".parse::<DataType>(),
-            Ok(DataType::Array(Array(Box::new(DataType::Bool))))
+        assert!(
+            DataType::parse("[[STRING[]]]").is_err(),
+            "Invalid array format"
         );
-        assert_eq!(
-            "[SWITCH[]]".parse::<DataType>(),
-            Ok(DataType::Array(Array(Box::new(DataType::Switch))))
-        );
-        assert_eq!(
-            "[UI32[]]".parse::<DataType>(),
-            Ok(DataType::Array(Array(Box::new(DataType::Ui32))))
-        );
-        assert_eq!(
-            "[UI64[]]".parse::<DataType>(),
-            Ok(DataType::Array(Array(Box::new(DataType::Ui64))))
-        );
-        assert_eq!(
-            "[I32[]]".parse::<DataType>(),
-            Ok(DataType::Array(Array(Box::new(DataType::I32))))
-        );
-        assert_eq!(
-            "[I64[]]".parse::<DataType>(),
-            Ok(DataType::Array(Array(Box::new(DataType::I64))))
-        );
-        assert_eq!(
-            "[F32[]]".parse::<DataType>(),
-            Ok(DataType::Array(Array(Box::new(DataType::F32))))
-        );
-        assert_eq!(
-            "[F64[]]".parse::<DataType>(),
-            Ok(DataType::Array(Array(Box::new(DataType::F64))))
-        );
-        assert_eq!(
-            "[psCREDENTIAL[]]".parse::<DataType>(),
-            Ok(DataType::Array(Array(Box::new(DataType::Credential))))
-        );
-        assert_eq!(
-            "[UNKNOWN[]]".parse::<DataType>(),
-            Ok(DataType::Array(Array(Box::new(DataType::Unknown))))
-        );
-        assert_eq!(
-            "[SOMETHING_ELSE[]]".parse::<DataType>(),
-            Ok(DataType::Array(Array(Box::new(DataType::Unknown))))
-        );
+    }
+
+    #[test]
+    fn test_parse_undefined() {
+        assert_eq!(DataType::parse("[]").unwrap().1, DataType::Undefined);
+    }
+
+    #[test]
+    fn test_parse_empty_input() {
+        assert_eq!(DataType::parse("").unwrap().1, DataType::Undefined);
     }
 }
