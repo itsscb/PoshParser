@@ -70,7 +70,14 @@ impl DataType {
         }
 
         if input.is_empty() {
-            return Ok(("", Self::Undefined));
+            return Ok((input, Self::Undefined));
+        }
+
+        if !input.starts_with('[') || !input.ends_with(']') {
+            return Err(nom::Err::Error(nom::error::make_error(
+                input,
+                nom::error::ErrorKind::Tag,
+            )));
         }
 
         let (input, data_type) = preceded(
@@ -174,6 +181,11 @@ mod tests {
     #[test]
     fn test_parse_undefined() {
         assert_eq!(DataType::parse("[]").unwrap().1, DataType::Undefined);
+    }
+
+    #[test]
+    fn test_parse_invalid() {
+        assert!(DataType::parse("string").is_err());
     }
 
     #[test]
