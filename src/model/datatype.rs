@@ -73,7 +73,7 @@ impl DataType {
             return Ok((input, Self::Undefined));
         }
 
-        if !input.starts_with('[') || !input.ends_with(']') {
+        if !input.starts_with('[') {
             return Err(nom::Err::Error(nom::error::make_error(
                 input,
                 nom::error::ErrorKind::Tag,
